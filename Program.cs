@@ -58,4 +58,4 @@ app.MapPost("/api/cadastrar", (Cliente novoCliente) =>
 app.Run();
 
 // Molde para o C# receber as informações organizadas
-public record Cliente(string Nome, string Cpf, string Telefone, string Email);
+public record Cliente(string Nome, string Cpf, string Telefone, string Email)
