@@ -1,9 +1,9 @@
-using MySql.Data.MySqlClient;
 using System.Text.Json.Serialization;
+using MySql.Data.MySqlClient; // 1. Garante a importação correta do MySQL
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Libera o acesso total para que o HTML consiga consumir a API sem erros de CORS
+// Libera o acesso para que o HTML 
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
@@ -15,22 +15,13 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
-
 app.UseCors();
 
 string conexaoString = "Server=127.0.0.1;Database=BarbeariaTechh;Uid=root;Pwd=58935832Vv.;Port=3306;";
 
-// ==========================================
-// ROTA DE TESTE
-// ==========================================
 app.MapGet("/", () => "Servidor da Barbearia funcionando! 🚀");
 
-
-// ==========================================
-// ROTAS DE CLIENTES
-// ==========================================
-
-// ROTA DE CADASTRO DE CLIENTE (POST)
+// ROTA DE CADASTRO CORRIGIDA
 app.MapPost("/api/cadastrar", (Cliente novoCliente) =>
 {
     using (MySqlConnection conn = new MySqlConnection(conexaoString))
@@ -39,7 +30,26 @@ app.MapPost("/api/cadastrar", (Cliente novoCliente) =>
         {
             conn.Open();
 
-            string query = "INSERT INTO usuarios (nome, cpf, telefone, email) VALUES (@nome, @cpf, @telefone, @email)";
+            string queryVerificacao = @"SELECT COUNT(*) FROM clientes 
+                                      WHERE telefone = @telefone 
+                                      OR email = @email
+                                      OR (nome = @nome AND telefone = @telefone)";
+
+            using (MySqlCommand cmdVerifica = new MySqlCommand(queryVerificacao, conn))
+            {
+                cmdVerifica.Parameters.AddWithValue("@nome", novoCliente.Nome);
+                cmdVerifica.Parameters.AddWithValue("@telefone", novoCliente.Telefone);
+                cmdVerifica.Parameters.AddWithValue("@email", novoCliente.Email);
+
+                long clienteExiste = (long)cmdVerifica.ExecuteScalar();
+                if (clienteExiste > 0)
+                {
+                    return Results.BadRequest(new { erro = "Regra de Negócio: Já existe um cliente cadastrado com este Nome, E-mail ou Telefone!" });
+                }
+            }
+
+            // Query de inserção ajustada para a tabela 'clientes' e incluindo a senha
+            string query = "INSERT INTO clientes (nome, cpf, telefone, email, senha) VALUES (@nome, @cpf, @telefone, @email, @senha)";
 
             using (MySqlCommand cmd = new MySqlCommand(query, conn))
             {
@@ -47,6 +57,7 @@ app.MapPost("/api/cadastrar", (Cliente novoCliente) =>
                 cmd.Parameters.AddWithValue("@cpf", novoCliente.Cpf);
                 cmd.Parameters.AddWithValue("@telefone", novoCliente.Telefone);
                 cmd.Parameters.AddWithValue("@email", novoCliente.Email);
+                cmd.Parameters.AddWithValue("@senha", novoCliente.Senha); // Mapeado corretamente agora
 
                 cmd.ExecuteNonQuery();
             }
@@ -60,6 +71,53 @@ app.MapPost("/api/cadastrar", (Cliente novoCliente) =>
     }
 });
 
+// NOVA ROTA DE LOGIN SEGUINDO A MESMA ESTRUTURA
+app.MapPost("/api/login", (LoginCliente dadosLogin) =>
+{
+    using (MySqlConnection conn = new MySqlConnection(conexaoString))
+    {
+        try
+        {
+            conn.Open();
+
+            string queryLogin = @"SELECT id_cliente, nome, telefone, email 
+                                  FROM clientes 
+                                  WHERE (email = @usuario OR telefone = @usuario) 
+                                  AND senha = @senha";
+
+            using (MySqlCommand cmd = new MySqlCommand(queryLogin, conn))
+            {
+                cmd.Parameters.AddWithValue("@usuario", dadosLogin.Usuario);
+                cmd.Parameters.AddWithValue("@senha", dadosLogin.Senha);
+
+                using (MySqlDataReader reader = cmd.ExecuteReader())
+                {
+                    if (reader.Read())
+                    {
+                        return Results.Ok(new
+                        {
+                            Nome = reader.GetString("nome"),
+                            Email = reader.GetString("email"),
+                            Mensagem = "Login efetuado com sucesso!"
+                        });
+                    }
+                }
+            }
+
+            return Results.Json(new { erro = "Usuário (E-mail/Telefone) ou senha incorretos!" }, statusCode: 401);
+        }
+        catch (Exception ex)
+        {
+            return Results.BadRequest(new { erro = "Erro ao tentar realizar login: " + ex.Message });
+        }
+    }
+});
+
+app.Run("http://localhost:5151");
+
+
+public record Cliente(string Nome, string Cpf, string Telefone, string Email, string Senha);
+public record LoginCliente(string Usuario, string Senha);
 
 // ==========================================
 // ROTAS DE BARBEIROS
