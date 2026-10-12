@@ -6,16 +6,6 @@ USE `barbeariatechh`;
 -- ------------------------------------------------------
 -- Server version	8.0.46
 
-/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
-/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
-/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
-/*!50503 SET NAMES utf8 */;
-/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;
-/*!40103 SET TIME_ZONE='+00:00' */;
-/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;
-/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
-/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
-/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
 --
 -- Table structure for table `agendamentos`
@@ -166,15 +156,72 @@ LOCK TABLES `servicos` WRITE;
 /*!40000 ALTER TABLE `servicos` DISABLE KEYS */;
 INSERT INTO `servicos` VALUES (1,'Corte Masculino','Corte tradicional masculino',35.00,40),(2,'Barba','Modelagem completa da barba',25.00,30),(3,'Corte + Barba','Pacote completo',55.00,60);
 /*!40000 ALTER TABLE `servicos` ENABLE KEYS */;
+
+CREATE TABLE funcionario (
+    id_funcionario        SERIAL PRIMARY KEY,
+    nome                  VARCHAR(100)  NOT NULL,
+    cpf                   CHAR(11)      NOT NULL UNIQUE,
+    rg                    VARCHAR(20),
+    data_nascimento       DATE,
+    telefone              VARCHAR(20),
+    email                 VARCHAR(120)  UNIQUE,
+    cargo                 VARCHAR(30)   NOT NULL
+                          CHECK (cargo IN ('BARBEIRO', 'RECEPCIONISTA', 'GERENTE', 'AUXILIAR')),
+    comissao_percentual   NUMERIC(5,2)  NOT NULL DEFAULT 0
+                          CHECK (comissao_percentual BETWEEN 0 AND 100),
+    salario_base          NUMERIC(10,2) NOT NULL DEFAULT 0
+                          CHECK (salario_base >= 0),
+    data_admissao         DATE          NOT NULL DEFAULT CURRENT_DATE,
+    data_demissao         DATE,
+    ativo                 BOOLEAN       NOT NULL DEFAULT TRUE,
+    criado_em             TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    atualizado_em         TIMESTAMP,
+
+    CONSTRAINT chk_datas_funcionario
+        CHECK (data_demissao IS NULL OR data_demissao >= data_admissao),
+    CONSTRAINT chk_demissao_inativo
+        CHECK (ativo = TRUE OR data_demissao IS NOT NULL)
+CREATE TABLE servico (
+    id_servico        SERIAL PRIMARY KEY,
+    nome              VARCHAR(60)   NOT NULL UNIQUE,
+    descricao         VARCHAR(255),
+    duracao_minutos   INT           NOT NULL CHECK (duracao_minutos > 0),
+    preco             NUMERIC(10,2) NOT NULL CHECK (preco >= 0),
+    ativo             BOOLEAN       NOT NULL DEFAULT TRUE
+
+
+CREATE TABLE agendamento (
+    id_agendamento    SERIAL PRIMARY KEY,
+    id_cliente        INT           NOT NULL REFERENCES cliente(id_cliente),
+    id_funcionario    INT           NOT NULL REFERENCES funcionario(id_funcionario),
+    id_servico        INT           NOT NULL REFERENCES servico(id_servico),
+    data_hora_inicio  TIMESTAMP     NOT NULL,
+    data_hora_fim     TIMESTAMP     NOT NULL,
+    status            VARCHAR(20)   NOT NULL DEFAULT 'AGENDADO'
+                      CHECK (status IN ('AGENDADO', 'CONFIRMADO', 'EM_ATENDIMENTO',
+                                        'CONCLUIDO', 'CANCELADO', 'NAO_COMPARECEU')),
+    valor_cobrado     NUMERIC(10,2) NOT NULL CHECK (valor_cobrado >= 0),
+    observacao        VARCHAR(255),
+    criado_em         TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    atualizado_em     TIMESTAMP,
+
+    CONSTRAINT chk_horario_agendamento
+        CHECK (data_hora_fim > data_hora_inicio)
+
+-- Impede que o mesmo funcionário tenha dois agendamentos ativos no mesmo horário
+-- (colocar no PostgreSQL com a extensão btree_gist; ver observação abaixo)
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+
+ALTER TABLE agendamento
+    ADD CONSTRAINT ex_agendamento_funcionario_horario
+    EXCLUDE USING gist (
+        id_funcionario WITH =,
+        tsrange(data_hora_inicio, data_hora_fim) WITH &&
+    )
+    WHERE (status NOT IN ('CANCELADO', 'NAO_COMPARECEU'));
+
+CREATE INDEX idx_agendamento_data ON agendamento (data_hora_inicio);
+CREATE INDEX idx_agendamento_funcionario ON agendamento (id_funcionario, data_hora_inicio);
+
 UNLOCK TABLES;
-/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
-
-/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
-/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
-/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
-/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
-/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
-/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
-/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
-
--- Dump completed on 2026-05-18 15:15:17
+);
